@@ -15,7 +15,8 @@ pip-delete-this-directory.txt
 # ------------------------------
 # Environment / Secrets
 # ------------------------------
-.env
+backend/.env  # <--- specifically ignore backend/.env
+.env          # <--- also ignore a root-level .env (if any)
 
 # ------------------------------
 # Node / React ignores
