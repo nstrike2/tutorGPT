@@ -139,7 +139,7 @@ def chat():
         )
 
         completion = openai.ChatCompletion.create(
-            model="ft:gpt-4o-2024-08-06:personal:tutor-gpt:AsxMQSe1",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_instructions},
                 {"role": "user", "content": user_message}
