@@ -1,0 +1,38 @@
+/* Rating.css */
+.ratingContainer {
+    display: inline-flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    align-items: center;
+    font-size: 1.2rem;
+  }
+  
+  /* Base styling for both thumbs */
+  .thumb {
+    cursor: pointer;
+    transition: transform 0.1s, color 0.2s;
+  }
+  
+  /* On hover, scale up slightly */
+  .thumb:hover {
+    transform: scale(1.15);
+  }
+  
+  /* The “thumbUp” vs. “thumbDown” classes let you style them differently if needed */
+  .thumbUp {
+    color: green;
+  }
+  
+  .thumbDown {
+    /* e.g. custom color or offset for “down” thumb? */
+    color: red;
+  }
+  
+  /* The “active” class highlights the selected thumb in a color. */
+  .thumbUp.active {
+    color: green;  /* Thumbs-up is green when active */
+  }
+  .thumbDown.active {
+    color: red;    /* Thumbs-down is red when active */
+  }
+  
