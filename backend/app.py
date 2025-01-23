@@ -46,7 +46,7 @@ def is_violating_policy(user_message: str) -> bool:
 # ----------------------------------------------------
 def dynamic_filter(ai_response: str) -> str:
     """
-    A multi-stage pipeline that tries to remove or redact 
+    A multi-stage pipeline that tries to remove or redact
     any code snippets, direct solutions, or suspicious content.
     """
 
@@ -75,7 +75,7 @@ def dynamic_filter(ai_response: str) -> str:
             flags=re.MULTILINE
         )
 
-    # ---- Stage C (Optional): Remove chain-of-thought or exact solutions. ----
+    # ---- Stage C: Remove chain-of-thought or exact solutions. ----
     # This is naive: if the text includes "step by step solution" or "full solution".
     # You might refine with advanced heuristics or a separate AI model.
     solution_like_phrases = [
@@ -92,7 +92,7 @@ def dynamic_filter(ai_response: str) -> str:
             flags=re.IGNORECASE
         )
 
-    # ---- Stage D (Optional): Detect prompt injection or repeated attempts. ----
+    # ---- Stage D: Detect prompt injection or repeated attempts. ----
     # If you detect users repeatedly trying to circumvent filters,
     # you might store context in a session or block future requests.
     # We'll just do a naive example that if the text includes "ignore previous" or
@@ -105,6 +105,9 @@ def dynamic_filter(ai_response: str) -> str:
     return sanitized_response
 
 
+# ----------------------------------------------------
+# 3. Chat API Endpoint
+# ----------------------------------------------------
 @app.route("/api/chat", methods=["POST"])
 def chat():
     data = request.get_json()
@@ -136,8 +139,7 @@ def chat():
         )
 
         completion = openai.ChatCompletion.create(
-            model="gpt-4o",         # <-- Updated to gpt-4o
-            store=True,            # <-- Custom parameter if your library supports it
+            model="ft:gpt-4o-2024-08-06:personal:tutor-gpt:AsxMQSe1",
             messages=[
                 {"role": "system", "content": system_instructions},
                 {"role": "user", "content": user_message}
@@ -160,8 +162,12 @@ def chat():
 # ----------------------------------------------------
 # In-memory store (replace with a real DB or logging system in prod)
 ratings_log = []
+# ----------------------------------------------------
 
 
+# ----------------------------------------------------
+# 4. Rating API Endpoint
+# ----------------------------------------------------
 @app.route("/api/rate", methods=["POST"])
 def rate():
     """

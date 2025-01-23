@@ -20,7 +20,7 @@
 TutorGPT is a specialized chatbot that:
 - Answers conceptual questions about probability and course material.
 - Provides hints and guidance on homework assignments—without simply handing out the full solutions.
-- Uses **OpenAI’s** large language model (GPT) under the hood, with extra **policy checks** to avoid academic dishonesty.
+- Uses a **fine-tuned OpenAI GPT model** under the hood, with extra **policy checks** to avoid academic dishonesty.
 - Includes a **rating** system so students can rate the helpfulness of responses.
 
 This helps TAs and professors cut down on repetitive questions and improves the learning experience by giving students immediate feedback—day or night.
@@ -30,7 +30,7 @@ This helps TAs and professors cut down on repetitive questions and improves the 
 ## Features
 
 - **Chat Interface**: Clean, minimal React-based UI for easy conversation flow.  
-- **Flask Backend**: Python server that calls the OpenAI API with additional guardrails.  
+- **Flask Backend**: Python server that calls the **fine-tuned OpenAI GPT** model with additional guardrails.  
 - **Policy Checks**: Naive keyword filtering + optional post-processing to remove code blocks or direct solutions.  
 - **Rating System**: Thumbs-up/down rating per message, which logs to the backend for potential analytics.  
 - **CORS-Enabled**: The Flask server is configured to accept requests from `localhost:3000` (the React dev server).
@@ -45,12 +45,12 @@ This helps TAs and professors cut down on repetitive questions and improves the 
 
 2. **Backend**:  
    - **Flask** (Python)  
-   - Exposes `/api/chat` endpoint to process user messages, apply policy checks, and call the OpenAI API.  
+   - Exposes `/api/chat` endpoint to process user messages, apply policy checks, and call the **fine-tuned** OpenAI API.  
    - Exposes `/api/rate` to store or log message ratings.  
    - Uses **`flask-cors`** for cross-origin requests.
 
 3. **OpenAI**:  
-   - The Flask app calls OpenAI’s **ChatCompletion** API (or a custom library method) with the user’s message.  
+   - The Flask app calls OpenAI’s **ChatCompletion** API with your **fine-tuned** GPT model name.  
    - A system prompt instructs the model to act like a TA and avoid giving direct solutions.
 
 ---
@@ -73,6 +73,7 @@ cd tutor-plus-plus
   OPENAI_API_KEY=sk-YourRealKeyHere
   FLASK_DEBUG=1
   ```
+- **Note**: The API key is used for **development**. You won’t need it in production hosting if you use container secrets or another secure method.
 - Ensure `.env` is listed in your `.gitignore`.
 
 ### 3. Install Backend Dependencies
@@ -111,6 +112,8 @@ npm install
    Runs on [http://localhost:3000](http://localhost:3000). Make sure the `baseURL` in `frontend/src/api.js` matches your Flask port.
 
 3. **Open** [http://localhost:3000](http://localhost:3000) to interact with the chatbot.
+
+**Important**: In `app.py`, ensure you specify your **fine-tuned model name** (e.g. `gpt-4-2025-01-23:tutor-gpt`) where you call `openai.ChatCompletion.create(..., model="your-finetuned-model")`.  
 
 ---
 
@@ -151,7 +154,7 @@ tutor-plus-plus/
 
 - **Database Integration**: Store chat logs, user ratings, and usage analytics in a real database (e.g., Postgres, MongoDB).  
 - **OpenAI Moderation**: Integrate the official [OpenAI Moderation endpoint](https://platform.openai.com/docs/guides/moderation) for more robust content filtering.  
-- **Fine-Tuning**: Use `model_fine_tuning.py` to train a specialized model with CS109 data.  
+- **Fine-Tuning**: We already have a custom fine-tuned GPT model, but you can refine further or update as more course data becomes available.  
 - **Forum Integration**: Connect with platforms like Piazza or Ed, allowing the bot to automatically respond to common questions.  
 - **Audio/Video**: Provide an interactive AV interface for real-time “office hours.”
 

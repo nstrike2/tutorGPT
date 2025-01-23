@@ -15,7 +15,7 @@ pip-delete-this-directory.txt
 # ------------------------------
 # Environment / Secrets
 # ------------------------------
-backend/.env  # <--- specifically ignore backend/.env
+/backend/.env  # <--- specifically ignore backend/.env
 .env          # <--- also ignore a root-level .env (if any)
 
 # ------------------------------
@@ -35,3 +35,11 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# ------------------------------
+# Database
+# ------------------------------
+client_secrets.json
+dataset_chat_prepared.jsonl
+dataset_jsonl
+dataset_prepared_jsonl
