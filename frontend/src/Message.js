@@ -1,4 +1,9 @@
 import React from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css' // <-- KaTeX CSS for math rendering
+
 import Rating from './Rating'
 
 function Message ({ message }) {
@@ -15,7 +20,21 @@ function Message ({ message }) {
 
   return (
     <div className={messageClass}>
-      <div className='messageContent'>{message.content}</div>
+      {isUser ? (
+        // For user messages, just show raw text
+        <div className='messageContent'>{message.content}</div>
+      ) : (
+        // For assistant messages, render Markdown with math support
+        <div className='messageContent'>
+          <ReactMarkdown
+            // Add remark and rehype plugins for math
+            remarkPlugins={[remarkMath]}
+            rehypePlugins={[rehypeKatex]}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      )}
 
       {/* Show the rating only for assistant messages */}
       {!isUser && (

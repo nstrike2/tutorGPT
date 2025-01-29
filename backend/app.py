@@ -17,6 +17,7 @@ if not api_key or api_key.startswith("your_openai_api_key_here"):
           "Please set OPENAI_API_KEY in your .env file.")
 
 openai.api_key = api_key
+conversation_history = []
 
 
 # ----------------------------------------------------
@@ -104,59 +105,63 @@ def dynamic_filter(ai_response: str) -> str:
 
     return sanitized_response
 
-
 # ----------------------------------------------------
 # 3. Chat API Endpoint
 # ----------------------------------------------------
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_message = data.get("message", "")
+    data = request.get_json() or {}
+    user_message = data.get("message", "").strip()
 
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
-    # Check if we have a valid API key
     if not api_key:
         return jsonify({"error": "No valid OpenAI API key configured"}), 500
 
-    # Check for policy violation
+    # 1) Policy check for the new user message
     if is_violating_policy(user_message):
-        return jsonify({
-            "assistant_message": "I'm sorry, but I cannot help with that request."
-        })
+        return jsonify({"assistant_message": "I'm sorry, but I cannot help with that request."})
 
-    # --- Call the chat completion API via OpenAI client ---
+    # 2) Append user message to our global conversation
+    conversation_history.append({"role": "user", "content": user_message})
+
+    # 3) Build an array for GPT: system + entire conversation
+    system_instructions = (
+        "You are Tutor++, an AI teaching assistant for CS109 students, providing help just like a TA during office hours. "
+        "As a TA, you are patient, approachable, and dedicated to uncovering each student's thought process. "
+        "You clarify topics, break down complex ideas, and strategically ask open-ended questions to guide students toward their own understanding. "
+        "Encourage a back-and-forth dialogue: invite them to share their reasoning, and respond with follow-up questions rather than direct answers. "
+        "Be supportive and use a hint-based approach that reveals small insights incrementally—never revealing full code solutions or explicit homework/test answers. "
+        "If a student explicitly requests final solutions or code, politely refuse and remind them of academic integrity. "
+        "In these scenarios, continue to offer conceptual hints that steer them in the right direction, but preserve their opportunity to discover the final steps themselves. "
+        "Your ultimate objective is to strengthen students’ problem-solving skills, promote independent learning, and help them build confidence by arriving at answers through critical thinking."
+    )
+
+    openai_messages = [{"role": "system", "content": system_instructions}]
+    openai_messages.extend(conversation_history)
+
+    # 4) Call GPT with the entire conversation
     try:
-        system_instructions = (
-            "You are Tutor++, an AI built for students of CS109. "
-            "You behave like a TA in office hours: you explain concepts, "
-            "offer guidance, and help students reason about problems. "
-            "You do NOT provide fully written code solutions, nor do you "
-            "provide direct answers to homework or tests. If a user asks "
-            "for code or solutions directly, you must politely refuse. "
-            "Offer explanations and hints (only when repeated attempts have been made) instead."
-        )
-
         completion = openai.ChatCompletion.create(
             model="gpt-4o",
-            messages=[
-                {"role": "system", "content": system_instructions},
-                {"role": "user", "content": user_message}
-            ],
-
+            messages=openai_messages
         )
         ai_raw_response = completion["choices"][0]["message"]["content"].strip(
         )
-
-        # Pass the raw AI output through our dynamic filter
         final_response = dynamic_filter(ai_raw_response)
+
+        # 5) Append GPT's reply to conversation so next request sees it
+        conversation_history.append(
+            {"role": "assistant", "content": final_response})
+
+        return jsonify({"assistant_message": final_response}), 200
 
     except Exception as e:
         print(f"Error calling OpenAI ChatCompletion: {e}")
         return jsonify({"error": "Failed to get response from model"}), 500
-
-    return jsonify({"assistant_message": final_response}), 200
 
 
 # ----------------------------------------------------
