@@ -25,6 +25,8 @@ TutorGPT is a specialized chatbot that:
 
 This helps TAs and professors cut down on repetitive questions and improves the learning experience by giving students immediate feedback—day or night.
 
+Please see [here](https://drive.google.com/drive/folders/148t0BcXo96vTHQDZTxsysuGKGvBdpNOD?usp=sharing) for more materials around product specifications and go-to-market.
+
 ---
 
 ## Features
