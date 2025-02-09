@@ -1,1 +1,1 @@
-web: cd frontend && npm run start
+web: cd frontend && npm install && npm run start
