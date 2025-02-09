@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { rateMessage } from './api'
-import './Rating.css' // <-- Import a dedicated CSS file (or use App.css)
+import { rateMessage } from '../utils/api'
+import '../styles/Rating.css' // <-- Import a dedicated CSS file (or use App.css)
 
 function Rating ({ messageId, userInput, assistantOutput }) {
   const [rating, setRating] = useState(null)

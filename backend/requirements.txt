@@ -1,3 +1,4 @@
 Flask==2.2.5
 python-dotenv==1.0.0
-openai==0.27.0  # If you plan to integrate with OpenAI
+openai==0.27.0  
+flask_cors==3.0.10

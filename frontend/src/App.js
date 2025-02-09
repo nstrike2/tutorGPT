@@ -1,6 +1,6 @@
 import React from 'react'
-import ChatRat from './Chat' // or Chat if that's your component name
-import './App.css' // Import your styling
+import ChatRat from './components/Chat'
+import './styles/App.css'
 
 function App () {
   return (

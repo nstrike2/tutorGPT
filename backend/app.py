@@ -1,34 +1,76 @@
 import os
 import re
-import openai  # <-- Correct import statement
-from flask import Flask, request, jsonify
+import openai
+import logging
+import redis
+import json
+from typing import Any, Dict, List
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from dotenv import load_dotenv
+import config  # Import our configuration settings
 
-load_dotenv()  # Load environment variables from .env
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Set OpenAI API key from config
+if not config.OPENAI_API_KEY or config.OPENAI_API_KEY.startswith("your_openai_api_key_here"):
+    logger.warning(
+        "No valid OpenAI API key found! Please set OPENAI_API_KEY in your .env file.")
+openai.api_key = config.OPENAI_API_KEY
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-# Get the API key from .env
-api_key = os.getenv("OPENAI_API_KEY")
-if not api_key or api_key.startswith("your_openai_api_key_here"):
-    print("WARNING: No valid OpenAI API key found! "
-          "Please set OPENAI_API_KEY in your .env file.")
+# Set up Redis client
+redis_client = redis.Redis(
+    host=config.REDIS_HOST,
+    port=config.REDIS_PORT,
+    db=0,
+    decode_responses=True  # so we get string outputs instead of bytes
+)
 
-openai.api_key = api_key
-conversation_history = []
+# ----------------------------------------------------
+# Guardrail: Basic Rate Limiting per IP
+# ----------------------------------------------------
 
+
+def rate_limit_exceeded(ip: str, limit_seconds: int = 5) -> bool:
+    """
+    Returns True if the client (identified by IP) has made a request
+    within the last `limit_seconds` seconds.
+    """
+    key = f"rate:{ip}"
+    if redis_client.exists(key):
+        return True
+    else:
+        # Set a key with an expiration time
+        redis_client.set(key, 1, ex=limit_seconds)
+        return False
+
+# ----------------------------------------------------
+# Helper functions for conversation history using Redis
+# ----------------------------------------------------
+
+
+def get_conversation_history() -> List[Dict[str, str]]:
+    history = redis_client.get("conversation_history")
+    if history:
+        return json.loads(history)
+    return []
+
+
+def save_conversation_history(history: List[Dict[str, str]]) -> None:
+    redis_client.set("conversation_history", json.dumps(history))
 
 # ----------------------------------------------------
 # 1. Enhanced Policy Checking for User Input
 # ----------------------------------------------------
+
+
 def is_violating_policy(user_message: str) -> bool:
     """
-    A naive policy check. You could combine this with:
-      - OpenAI Moderation endpoint
-      - Regex for suspicious words/phrases
-      - A dedicated classifier
+    Checks for blacklisted phrases and prompt injection attempts.
     """
     blacklisted_phrases = [
         "give me the homework solution",
@@ -38,30 +80,36 @@ def is_violating_policy(user_message: str) -> bool:
         "give me the answer",
         "malicious usage request",
     ]
-    user_message_lower = user_message.lower()
-    return any(phrase in user_message_lower for phrase in blacklisted_phrases)
-
+    # Also check for prompt injection attempts in the user message
+    injection_phrases = [
+        "ignore previous",
+        "override your instructions",
+    ]
+    message_lower = user_message.lower()
+    if any(phrase in message_lower for phrase in blacklisted_phrases):
+        return True
+    if any(phrase in message_lower for phrase in injection_phrases):
+        return True
+    return False
 
 # ----------------------------------------------------
 # 2. Dynamic Filter for AI Output
 # ----------------------------------------------------
+
+
 def dynamic_filter(ai_response: str) -> str:
     """
     A multi-stage pipeline that tries to remove or redact
     any code snippets, direct solutions, or suspicious content.
     """
-
-    # ---- Stage A: Remove code blocks (Markdown, HTML, etc.) ----
-    # Example patterns for triple backticks or <code> tags
+    # Stage A: Remove code blocks (Markdown, HTML, etc.)
     code_block_pattern = re.compile(
         r"```[\s\S]*?```|<code>[\s\S]*?</code>", re.IGNORECASE)
     sanitized_response = code_block_pattern.sub(
         "[CODE REMOVED — Sorry, I cannot provide direct code.]", ai_response
     )
 
-    # ---- Stage B: Redact suspicious lines if they look like code or a full solution. ----
-    # For instance, lines that start with typical code patterns:
-    # def, class, console prompts, includes 'import X', etc.
+    # Stage B: Redact suspicious lines that look like code
     suspicious_line_patterns = [
         r"^\s*(def\s+\w+\(|class\s+\w+|import\s+\w+)",     # Python
         r"^\s*(public\s+class|System\.out\.println)",      # Java
@@ -76,15 +124,12 @@ def dynamic_filter(ai_response: str) -> str:
             flags=re.MULTILINE
         )
 
-    # ---- Stage C: Remove chain-of-thought or exact solutions. ----
-    # This is naive: if the text includes "step by step solution" or "full solution".
-    # You might refine with advanced heuristics or a separate AI model.
+    # Stage C: Remove phrases that indicate a full solution
     solution_like_phrases = [
         "step by step solution",
         "full code",
         "complete solution",
     ]
-    # For each phrase, we might replace it or disclaim it
     for phrase in solution_like_phrases:
         sanitized_response = re.sub(
             phrase,
@@ -93,11 +138,7 @@ def dynamic_filter(ai_response: str) -> str:
             flags=re.IGNORECASE
         )
 
-    # ---- Stage D: Detect prompt injection or repeated attempts. ----
-    # If you detect users repeatedly trying to circumvent filters,
-    # you might store context in a session or block future requests.
-    # We'll just do a naive example that if the text includes "ignore previous" or
-    # "override your instructions," we replace with refusal:
+    # Stage D: Detect prompt injection attempts in the AI response (redundant but extra safety)
     prompt_injection_pattern = re.compile(
         r"(ignore previous|override your instructions)", re.IGNORECASE)
     if prompt_injection_pattern.search(sanitized_response):
@@ -105,97 +146,159 @@ def dynamic_filter(ai_response: str) -> str:
 
     return sanitized_response
 
+
 # ----------------------------------------------------
-# 3. Chat API Endpoint
+# Discrete Functions for the Chat Endpoint
+# ----------------------------------------------------
+MAX_MESSAGE_LENGTH = 1000  # Maximum allowed length for user messages
+
+
+def validate_request(data: Dict[str, Any]) -> str:
+    """
+    Validate incoming request data and extract the user message.
+    Raises ValueError if the message is missing or too long.
+    """
+    user_message = data.get("message", "").strip()
+    if not user_message:
+        raise ValueError("Message is required")
+    if len(user_message) > MAX_MESSAGE_LENGTH:
+        raise ValueError("Message is too long. Please shorten your message.")
+    return user_message
+
+
+def prepare_messages(user_message: str) -> List[Dict[str, str]]:
+    """
+    Prepare the messages list for the OpenAI ChatCompletion API.
+    Retrieves conversation history from Redis, appends the new user message,
+    and returns a list with system instructions followed by the conversation.
+    """
+    # Retrieve current conversation history from Redis
+    history = get_conversation_history()
+    # Append user message to the conversation history
+    history.append({"role": "user", "content": user_message})
+    save_conversation_history(history)
+
+    system_instructions = (
+        "You are Tutor++, an AI-powered tutoring assistant designed to help students in CS109 while upholding academic integrity. "
+        "Your role is to provide guidance as a TA during office hours: you are patient, approachable, and dedicated to uncovering each student's thought process. "
+        "Your goal is to help students build problem-solving skills, promote independent learning, and develop confidence through critical thinking. "
+        "\n\n"
+        "SPECIFIC TEACHING STRATEGIES:\n"
+        "- Use Socratic questioning: Ask thoughtful, open-ended questions (e.g., 'What have you tried so far?' or 'Why do you think that approach didn’t work?') to encourage students to think deeply and arrive at answers independently.\n"
+        "- Employ scaffolding: Break down complex problems into manageable steps, guiding students step-by-step without providing complete solutions.\n"
+        "- Encourage metacognition: Prompt students to reflect on their learning process by asking questions like 'What strategy did you find most helpful here?' or 'What would you do differently next time?'.\n"
+        "- Use real-world analogies: Relate abstract or complex concepts to familiar, real-life scenarios to make them more concrete and memorable.\n\n"
+        "EXPLICIT BOUNDARIES ON THE AI'S ROLE:\n"
+        "- Never provide full solutions, final code, or direct answers to assignments. Instead, offer hints, pseudocode, and conceptual explanations.\n"
+        "- Remain within the CS109 academic scope. If a request is off-topic (e.g., personal advice or non-CS109 topics), politely redirect or decline to answer.\n"
+        "- If a student repeatedly requests disallowed content, firmly remind them of academic integrity policies and encourage them to work through the problem with guidance.\n\n"
+        "HANDLING AMBIGUOUS OR EDGE-CASE REQUESTS:\n"
+        "- When faced with vague or ambiguous questions, ask clarifying questions before providing guidance.\n"
+        "- If the conversation drifts from the original problem, confirm whether the student intends to switch topics. Only proceed with the new focus if it is explicitly requested and remains within the academic scope.\n"
+        "- Always use all the provided context when answering questions and avoid straying from your initial prompt unless the student explicitly asks for a change.\n\n"
+        "RESPONSE FORMATTING AND CLARITY:\n"
+        "- Structure explanations in clear, logical steps (e.g., 'Step 1: Understand the Problem', 'Step 2: Break Down the Components').\n"
+        "- Use bullet points or numbered lists for multi-part explanations.\n"
+        "- Keep responses concise yet thorough, avoiding unnecessary jargon and ensuring clarity for students at different levels.\n"
+        "- Format key terms in bold or italics as needed and include code blocks for code snippets.\n\n"
+        "ENGAGEMENT, PERSONALIZATION, AND INCLUSIVITY:\n"
+        "- Adapt explanations based on the student’s level of understanding: use simpler language for beginners and more technical details for advanced students.\n"
+        "- Provide encouragement and positive reinforcement throughout the learning process.\n"
+        "- Use inclusive, respectful language that avoids stereotypes and welcomes students from diverse backgrounds.\n"
+        "- Whenever possible, relate problems to diverse, real-world contexts to increase relevance and engagement.\n\n"
+        "GENERAL REMINDERS:\n"
+        "- Always use all the context provided when answering questions. Never stray from your prompt or drift from the initial focus unless directly requested to, or unless a new problem is explicitly given.\n"
+        "- If you are unsure about what is being asked, ask the user for clarification rather than guessing.\n\n"
+        "Your ultimate objective is to guide students through the problem-solving process without giving away answers, helping them build independent learning skills while maintaining academic integrity."
+    )
+
+    messages = [{"role": "system", "content": system_instructions}]
+    messages.extend(history)
+    return messages
+
+
+def call_gpt_api(messages: List[Dict[str, str]]) -> str:
+    """
+    Interact with the OpenAI ChatCompletion API and return the raw AI response.
+    """
+    try:
+        completion = openai.ChatCompletion.create(
+            model=config.MODEL_NAME,
+            messages=messages
+        )
+        ai_response = completion["choices"][0]["message"]["content"].strip()
+        return ai_response
+    except Exception as e:
+        logger.error("Error calling OpenAI API: %s", e)
+        raise
+
+
+def format_response(raw_response: str) -> str:
+    """
+    Apply dynamic filtering to the raw API response.
+    """
+    return dynamic_filter(raw_response)
+
+# ----------------------------------------------------
+# Chat API Endpoint
 # ----------------------------------------------------
 
 
 @app.route("/api/chat", methods=["POST"])
-def chat():
+def chat() -> Response:
+    # Basic rate limiting based on client IP address
+    client_ip = request.remote_addr or "unknown"
+    if rate_limit_exceeded(client_ip):
+        return jsonify({"error": "Too many requests. Please slow down."}), 429
+
     data = request.get_json() or {}
-    user_message = data.get("message", "").strip()
+    try:
+        user_message = validate_request(data)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
 
-    if not user_message:
-        return jsonify({"error": "Message is required"}), 400
-
-    if not api_key:
-        return jsonify({"error": "No valid OpenAI API key configured"}), 500
-
-    # 1) Policy check for the new user message
+    # Enforce policy check
     if is_violating_policy(user_message):
         return jsonify({"assistant_message": "I'm sorry, but I cannot help with that request."})
 
-    # 2) Append user message to our global conversation
-    conversation_history.append({"role": "user", "content": user_message})
+    messages = prepare_messages(user_message)
 
-    # 3) Build an array for GPT: system + entire conversation
-    system_instructions = (
-        "You are Tutor++, an AI teaching assistant for CS109 students, providing help just like a TA during office hours. "
-        "As a TA, you are patient, approachable, and dedicated to uncovering each student's thought process. "
-        "You clarify topics, break down complex ideas, and strategically ask open-ended questions to guide students toward their own understanding. "
-        "Encourage a back-and-forth dialogue: invite them to share their reasoning, and respond with follow-up questions rather than direct answers. "
-        "Be supportive and use a hint-based approach that reveals small insights incrementally—never revealing full code solutions or explicit homework/test answers. "
-        "If a student explicitly requests final solutions or code, politely refuse and remind them of academic integrity. "
-        "In these scenarios, continue to offer conceptual hints that steer them in the right direction, but preserve their opportunity to discover the final steps themselves. "
-        "Your ultimate objective is to strengthen students’ problem-solving skills, promote independent learning, and help them build confidence by arriving at answers through critical thinking."
-    )
-
-    openai_messages = [{"role": "system", "content": system_instructions}]
-    openai_messages.extend(conversation_history)
-
-    # 4) Call GPT with the entire conversation
     try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=openai_messages
-        )
-        ai_raw_response = completion["choices"][0]["message"]["content"].strip(
-        )
-        final_response = dynamic_filter(ai_raw_response)
-
-        # 5) Append GPT's reply to conversation so next request sees it
-        conversation_history.append(
-            {"role": "assistant", "content": final_response})
-
-        return jsonify({"assistant_message": final_response}), 200
-
-    except Exception as e:
-        print(f"Error calling OpenAI ChatCompletion: {e}")
+        raw_response = call_gpt_api(messages)
+        final_response = format_response(raw_response)
+    except Exception:
         return jsonify({"error": "Failed to get response from model"}), 500
 
+    # Retrieve conversation history, append assistant message, and save back
+    history = get_conversation_history()
+    history.append({"role": "assistant", "content": final_response})
+    save_conversation_history(history)
+
+    return jsonify({"assistant_message": final_response}), 200
+
 
 # ----------------------------------------------------
-# In-memory store (replace with a real DB or logging system in prod)
-ratings_log = []
+# Rating API Endpoint
 # ----------------------------------------------------
+ratings_log: List[Dict[str, Any]] = []  # In-memory store for ratings
 
 
-# ----------------------------------------------------
-# 4. Rating API Endpoint
-# ----------------------------------------------------
 @app.route("/api/rate", methods=["POST"])
-def rate():
+def rate() -> Response:
     """
     Store rating information for admin monitoring.
     """
-    data = request.get_json()
-    rating = data.get("rating")
-    message_id = data.get("messageId")
-    user_input = data.get("userInput")
-    assistant_output = data.get("assistantOutput")
-
-    # Log or save this entry; here we just append to a list
+    data = request.get_json() or {}
     entry = {
-        "message_id": message_id,
-        "rating": rating,
-        "user_input": user_input,
-        "assistant_output": assistant_output
+        "message_id": data.get("messageId"),
+        "rating": data.get("rating"),
+        "user_input": data.get("userInput"),
+        "assistant_output": data.get("assistantOutput")
     }
     ratings_log.append(entry)
-
-    print(f"Rating received: {entry}")
+    logger.info("Rating received: %s", entry)
     return jsonify({"status": "success"}), 200
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)

@@ -1,8 +1,7 @@
 import React, { useState } from 'react'
-import { sendMessage } from './api'
+import { sendMessage } from '../utils/api'
 import Message from './Message'
-import './App.css' // <-- Import your CSS so .chatContainer, etc. are recognized
-
+import '../styles/App.css'
 /**
  * Reflow text to a maximum line length, but do NOT split sentences.
  * - We split the text into sentences using a naive regex for punctuation (".", "?", "!").
