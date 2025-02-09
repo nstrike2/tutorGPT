@@ -12,10 +12,11 @@
     "react-scripts": "5.0.1",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
+    "serve": "^14.2.4",
     "web-vitals": "^4.2.4"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "serve -s build",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
