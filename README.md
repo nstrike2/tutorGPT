@@ -63,7 +63,7 @@ Please see [here](https://drive.google.com/drive/folders/148t0BcXo96vTHQDZTxsysu
 
 ```bash
 git clone https://github.com/kashyapnathan/tutorGPT.git
-cd tutor-plus-plus
+cd tutorGPT
 ```
 
 *(Adjust paths if needed.)*
