@@ -1,1 +1,2 @@
-web: cd frontend && npm install && npm run start
+web: gunicorn app:app
+worker: cd frontend && npm install && npm run start
