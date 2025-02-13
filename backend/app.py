@@ -5,7 +5,7 @@ import logging
 import redis
 import json
 from typing import Any, Dict, List
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 import config  # Import our configuration settings
 
@@ -19,8 +19,14 @@ if not config.OPENAI_API_KEY or config.OPENAI_API_KEY.startswith("your_openai_ap
         "No valid OpenAI API key found! Please set OPENAI_API_KEY in your .env file.")
 openai.api_key = config.OPENAI_API_KEY
 
-app = Flask(__name__)
+# Initialize Flask and configure it to serve the frontend build
+app = Flask(
+    __name__,
+    static_folder=os.path.join(os.path.dirname(__file__), '../frontend/build'),
+    static_url_path=''
+)
 CORS(app)  # Enable CORS for all routes
+
 
 # Set up Redis client
 redis_client = redis.Redis(
@@ -29,6 +35,20 @@ redis_client = redis.Redis(
     db=0,
     decode_responses=True  # so we get string outputs instead of bytes
 )
+
+# ----------------------------------------------------
+# Serve the Frontend
+# ----------------------------------------------------
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    # If a file exists in the build folder, serve it; otherwise serve index.html
+    if path and os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
 
 # ----------------------------------------------------
 # Guardrail: Basic Rate Limiting per IP
