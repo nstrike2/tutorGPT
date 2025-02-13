@@ -25,6 +25,7 @@ app = Flask(
     static_folder=os.path.join(os.path.dirname(__file__), '../frontend/build'),
     static_url_path=''
 )
+
 CORS(app)  # Enable CORS for all routes
 
 
@@ -44,7 +45,6 @@ redis_client = redis.Redis(
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
-    # If a file exists in the build folder, serve it; otherwise serve index.html
     if path and os.path.exists(os.path.join(app.static_folder, path)):
         return send_from_directory(app.static_folder, path)
     else:
