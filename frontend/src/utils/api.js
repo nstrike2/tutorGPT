@@ -1,7 +1,7 @@
 import axios from 'axios'
 
-const apiClient = axios.create({
-  baseURL: 'http://localhost:5001/api' // or wherever your Flask app is
+const api = axios.create({
+  baseURL: '/api'
 })
 
 export const sendMessage = async message => {
