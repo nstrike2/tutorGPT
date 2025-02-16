@@ -26,11 +26,11 @@ app = Flask(
     static_url_path=''
 )
 
+# Set up CORS for API routes
 CORS(app, resources={
-    r"/api/*": {
-        "origins": ["http://localhost:3000", "https://tutorgpt.onrender.com"]
-    }
-})
+     r"/api/*": {"origins": ["http://localhost:3000", "https://tutorgpt.onrender.com"]}})
+
+# Ensure all responses include CORS headers (even on errors)
 
 
 @app.after_request
@@ -41,7 +41,6 @@ def add_cors_headers(response):
     if origin in allowed_origins:
         response.headers['Access-Control-Allow-Origin'] = origin
     else:
-        # Optionally set a default or leave it out
         response.headers['Access-Control-Allow-Origin'] = "https://tutorgpt.onrender.com"
     response.headers['Access-Control-Allow-Headers'] = "Content-Type,Authorization"
     response.headers['Access-Control-Allow-Methods'] = "GET,POST,PUT,DELETE,OPTIONS"
@@ -71,11 +70,10 @@ redis_client = redis.Redis(
     decode_responses=True  # so we get string outputs instead of bytes
 )
 
+
 # ----------------------------------------------------
 # Serve the Frontend
 # ----------------------------------------------------
-
-
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_frontend(path):
