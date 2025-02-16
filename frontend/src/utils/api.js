@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-  baseURL: '/api'
+  baseURL: 'https://tutorgpt.onrender.com/api'
 })
 
 export const sendMessage = async message => {
