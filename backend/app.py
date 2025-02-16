@@ -26,7 +26,41 @@ app = Flask(
     static_url_path=''
 )
 
-CORS(app)  # Enable CORS for all routes
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "https://tutorgpt.onrender.com"]
+    }
+})
+
+
+@app.after_request
+def add_cors_headers(response):
+    allowed_origins = ["http://localhost:3000",
+                       "https://tutorgpt.onrender.com"]
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    else:
+        # Optionally set a default or leave it out
+        response.headers['Access-Control-Allow-Origin'] = "https://tutorgpt.onrender.com"
+    response.headers['Access-Control-Allow-Headers'] = "Content-Type,Authorization"
+    response.headers['Access-Control-Allow-Methods'] = "GET,POST,PUT,DELETE,OPTIONS"
+    return response
+
+
+@app.errorhandler(500)
+def handle_500_error(e):
+    response = jsonify({"error": "Internal Server Error", "details": str(e)})
+    origin = request.headers.get('Origin')
+    allowed_origins = ["http://localhost:3000",
+                       "https://tutorgpt.onrender.com"]
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    else:
+        response.headers['Access-Control-Allow-Origin'] = "https://tutorgpt.onrender.com"
+    response.headers['Access-Control-Allow-Headers'] = "Content-Type,Authorization"
+    response.headers['Access-Control-Allow-Methods'] = "GET,POST,PUT,DELETE,OPTIONS"
+    return response, 500
 
 
 # Set up Redis client
@@ -266,35 +300,29 @@ def format_response(raw_response: str) -> str:
 
 @app.route("/api/chat", methods=["POST"])
 def chat() -> Response:
-    # Basic rate limiting based on client IP address
-    client_ip = request.remote_addr or "unknown"
-    if rate_limit_exceeded(client_ip):
-        return jsonify({"error": "Too many requests. Please slow down."}), 429
-
-    data = request.get_json() or {}
     try:
+        client_ip = request.remote_addr or "unknown"
+        if rate_limit_exceeded(client_ip):
+            return jsonify({"error": "Too many requests. Please slow down."}), 429
+
+        data = request.get_json() or {}
         user_message = validate_request(data)
-    except ValueError as ve:
-        return jsonify({"error": str(ve)}), 400
+        if is_violating_policy(user_message):
+            return jsonify({"assistant_message": "I'm sorry, but I cannot help with that request."})
 
-    # Enforce policy check
-    if is_violating_policy(user_message):
-        return jsonify({"assistant_message": "I'm sorry, but I cannot help with that request."})
-
-    messages = prepare_messages(user_message)
-
-    try:
+        messages = prepare_messages(user_message)
         raw_response = call_gpt_api(messages)
         final_response = format_response(raw_response)
-    except Exception:
-        return jsonify({"error": "Failed to get response from model"}), 500
 
-    # Retrieve conversation history, append assistant message, and save back
-    history = get_conversation_history()
-    history.append({"role": "assistant", "content": final_response})
-    save_conversation_history(history)
+        # Append to conversation history
+        history = get_conversation_history()
+        history.append({"role": "assistant", "content": final_response})
+        save_conversation_history(history)
 
-    return jsonify({"assistant_message": final_response}), 200
+        return jsonify({"assistant_message": final_response}), 200
+    except Exception as e:
+        logger.exception("Error in /api/chat endpoint")
+        return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
 
 
 # ----------------------------------------------------
