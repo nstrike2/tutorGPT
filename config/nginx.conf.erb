@@ -1,0 +1,32 @@
+worker_processes 1;
+
+events {
+  worker_connections 1024;
+}
+
+http {
+  include       mime.types;
+  default_type  application/octet-stream;
+  sendfile      on;
+  keepalive_timeout 65;
+
+  server {
+    # Bind to the port provided by Heroku (or default to 8080 for local testing)
+    listen <%= ENV["PORT"] || 8080 %>;
+
+    # Set the root to your production build output
+    root <%= ENV["STATIC_ROOT"] || "frontend/build" %>;
+    index index.html;
+
+    location / {
+      # For client-side routing – if a file is not found, serve index.html
+      try_files $uri $uri/ /index.html;
+    }
+
+    # Optional: set long cache headers for assets
+    location /static/ {
+      expires max;
+      add_header Cache-Control public;
+    }
+  }
+}
