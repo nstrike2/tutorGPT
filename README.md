@@ -85,7 +85,7 @@ cd backend
 pip install -r requirements.txt
 ```
 
-### 4. Install Frontend Dependencies
+### 4. Install Frontend Dependencies automatically
 
 ```bash
 cd ../frontend
