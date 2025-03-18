@@ -1,38 +1,40 @@
 /* Rating.css */
 .ratingContainer {
-    display: inline-flex;
-    gap: 0.75rem;
-    margin-top: 0.5rem;
-    align-items: center;
-    font-size: 1.2rem;
-  }
-  
-  /* Base styling for both thumbs */
-  .thumb {
-    cursor: pointer;
-    transition: transform 0.1s, color 0.2s;
-  }
-  
-  /* On hover, scale up slightly */
-  .thumb:hover {
-    transform: scale(1.15);
-  }
-  
-  /* The “thumbUp” vs. “thumbDown” classes let you style them differently if needed */
-  .thumbUp {
-    color: green;
-  }
-  
-  .thumbDown {
-    /* e.g. custom color or offset for “down” thumb? */
-    color: red;
-  }
-  
-  /* The “active” class highlights the selected thumb in a color. */
-  .thumbUp.active {
-    color: green;  /* Thumbs-up is green when active */
-  }
-  .thumbDown.active {
-    color: red;    /* Thumbs-down is red when active */
-  }
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 0.5rem;
+  position: relative;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.star {
+  cursor: pointer;
+  font-size: 1.5rem;
+  color: #ddd;
+  transition: color 0.2s ease-in-out;
+}
+
+.star:hover,
+.star.active {
+  color: #ffd700;
+}
+
+.tooltip {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  z-index: 10;
+}
   

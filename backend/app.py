@@ -550,12 +550,44 @@ def store_rating(rating_data: Dict[str, Any]) -> None:
     redis_client.expire(key, 60 * 60 * 24 * 30)
 
 
+def rate_limit_rating_exceeded(ip: str) -> bool:
+    """
+    Rate limiting specifically for ratings to prevent spam
+    Returns True if the client has exceeded the rating limit
+    """
+    key = f"rate:rating:{ip}"
+    pipe = redis_client.pipeline()
+
+    current = redis_client.get(key)
+    if current is None:
+        pipe.set(key, 1)
+        pipe.expire(key, 300)  # 5 minute window
+        pipe.execute()
+        return False
+
+    count = int(current)
+    if count >= 10:  # Max 10 ratings per 5 minutes
+        return True
+
+    pipe.incr(key)
+    pipe.execute()
+    return False
+
+
 @app.route("/api/rate", methods=["POST"])
 def rate() -> Response:
     """
     Enhanced rating endpoint with validation and storage
     """
     try:
+        # Add rate limiting check
+        client_ip = request.remote_addr or "unknown"
+        if rate_limit_rating_exceeded(client_ip):
+            return (
+                jsonify({"error": "Too many ratings. Please wait a few minutes."}),
+                429,
+            )
+
         data = request.get_json() or {}
         validate_rating_data(data)
         store_rating(data)
